@@ -1,7 +1,15 @@
 {
   "name": "vue-jsx-inspect",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Vite plugin: click-to-open-editor inspector for Vue JSX/TSX, powered by yuku-parser",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhylmzr/vue-jsx-inspect.git"
+  },
+  "homepage": "https://github.com/zhylmzr/vue-jsx-inspect#readme",
+  "bugs": {
+    "url": "https://github.com/zhylmzr/vue-jsx-inspect/issues"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -23,7 +31,8 @@
   },
   "keywords": [
     "vue",
-    "inspect"
+    "inspect",
+    "vite-plugin"
   ],
   "author": "zhylmzr",
   "license": "MIT",
