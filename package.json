@@ -1,0 +1,47 @@
+{
+  "name": "vue-jsx-inspect",
+  "version": "1.0.0",
+  "description": "Vite plugin: click-to-open-editor inspector for Vue JSX/TSX, powered by yuku-parser",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite playground",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p playground/tsconfig.json",
+    "test": "pnpm typecheck && node --test \"test/**/*.test.mjs\"",
+    "bench": "node scripts/bench.mjs",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "vue",
+    "inspect"
+  ],
+  "author": "zhylmzr",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@rolldown/pluginutils": "^1.0.1",
+    "yuku-ast": "^0.10.0",
+    "yuku-parser": "^0.10.0"
+  },
+  "peerDependencies": {
+    "vite": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "@vitejs/plugin-vue-jsx": "^5.1.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.0.0",
+    "vite-plugin-vue-inspector": "^4.0.2",
+    "vue": "^3.5.42"
+  }
+}

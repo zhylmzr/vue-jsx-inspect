@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "jsx": "preserve",
+    "jsxImportSource": "vue",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowJs": true,
+    "checkJs": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["main.js", "App.jsx", "Hello.tsx", "vite.config.ts"]
+}
