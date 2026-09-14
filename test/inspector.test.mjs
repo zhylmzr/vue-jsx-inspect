@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { after, before, test } from 'node:test'
 import { createServer } from 'vite'
+import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping'
 
 const playgroundRoot = fileURLToPath(new URL('../playground', import.meta.url))
 const tmpModule = path.join(playgroundRoot, '.tmp-hello-inspector-test.mjs')
@@ -110,4 +111,45 @@ test('运行时行为：data-v-inspector 被转移到 vnode.props 的不可枚�
   // 子元素同样被处理
   const [p] = vnode.children
   assert.ok(p.props.__v_inspector.endsWith('Hello.tsx:8:6'))
+})
+
+/**
+ * 定位 token 在代码中的位置
+ * @param {string} code
+ * @param {string} token
+ * @returns {{ line: number, column: number }} 1-based 行号，0-based 列号
+ */
+function posOf(code, token) {
+  const idx = code.indexOf(token)
+  assert.ok(idx !== -1, `token ${token} 应存在`)
+  const up = code.slice(0, idx)
+  return { line: up.split('\n').length, column: idx - (up.lastIndexOf('\n') + 1) }
+}
+
+test('sourcemap：注入点右侧的代码位置精确映射回原始文件', async () => {
+  // 回归：pre 注入自定义属性后若不返回 map，plugin-vue-jsx 的 babel map 会把注入文本
+  // 当作原始文件内容，同行注入点右侧的列号整体偏移；post 的头部 prepend 也会让行号偏移
+  const cases = [
+    // count.value++ 所在行左侧有 60+ 列的注入文本，且整个文件被 post 头部下移
+    ['/App.jsx', 'App.jsx', 'count.value++'],
+    // .tsx + 自闭合标签路径：{props.msg} 在 <p> 注入点右侧
+    ['/Hello.tsx', 'Hello.tsx', 'props.msg'],
+  ]
+  for (const [url, file, token] of cases) {
+    const result = await server.transformRequest(url)
+    assert.ok(result?.map, `${url} 应返回 sourcemap`)
+    const map = typeof result.map === 'string' ? JSON.parse(result.map) : result.map
+    assert.ok(map.mappings, `${url} 的 map.mappings 不应为空`)
+
+    const orig = fs.readFileSync(path.join(playgroundRoot, file), 'utf-8')
+    const origPos = posOf(orig, token)
+    const genPos = posOf(result.code, token)
+
+    const traced = originalPositionFor(new TraceMap(map), {
+      line: genPos.line,
+      column: genPos.column,
+    })
+    assert.equal(traced.line, origPos.line, `${file} "${token}" 行号`)
+    assert.equal(traced.column, origPos.column, `${file} "${token}" 列号`)
+  }
 })

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizePath, type Plugin, type ResolvedConfig } from "vite";
+import MagicString from "magic-string";
 import { langFromPath, parse } from "yuku-parser";
 import { walk } from "yuku-ast";
 import { exactRegex } from "@rolldown/pluginutils";
@@ -76,14 +77,17 @@ function getLineColumn(
 }
 
 // pre 阶段：解析 .jsx/.tsx 源码，给每个 JSXElement 注入 `data-v-inspector="file:line:column"`
-function injectLineData(code: string, id: string): string {
+// 必须返回 sourcemap：下游 @vitejs/plugin-vue-jsx 的 babel map 终点是本步的输出，
+// 缺了这层 map，注入的属性文本会被当作原始文件内容参与列映射，导致同行后续列号偏移
+function injectLineData(code: string, id: string) {
   const { program, diagnostics } = parse(code, { lang: langFromPath(id) });
-  if (diagnostics.some((d) => d.severity === "error")) return code;
+  if (diagnostics.some((d) => d.severity === "error")) return;
 
   // vite 的 /__open-in-editor 中间件固定以 process.cwd() 为基准解析文件路径，
   // 且目标文件不存在时会静默放弃，因此注入绝对路径
   const absolutePath = normalizePath(path.resolve(id));
-  const inserts: { position: number; content: string }[] = [];
+  const s = new MagicString(code);
+  let touched = false;
 
   walk(program, {
     JSXElement(node) {
@@ -97,43 +101,40 @@ function injectLineData(code: string, id: string): string {
       if (hasData) return;
       const position = opening.end - (opening.selfClosing ? 2 : 1);
       const { line, column } = getLineColumn(code, node.start);
-      inserts.push({
-        position,
-        content: ` ${KEY_DATA}="${absolutePath}:${line}:${column}"`,
-      });
+      s.appendLeft(position, ` ${KEY_DATA}="${absolutePath}:${line}:${column}"`);
+      touched = true;
     },
   });
 
-  if (!inserts.length) return code;
+  if (!touched) return;
 
-  inserts.sort((a, b) => a.position - b.position);
-  let result = "";
-  let last = 0;
-  for (const { position, content } of inserts) {
-    result += code.slice(last, position) + content;
-    last = position;
-  }
-  return result + code.slice(last);
+  return {
+    code: s.toString(),
+    // hires: "boundary" 在每个注入点生成映射段，覆盖行内列偏移；
+    // sources/sourcesContent 留空，由 vite 以文件名和原始代码补全
+    map: s.generateMap({ hires: "boundary" }),
+  };
 }
 
 // post 阶段：包装 vue 的 createVNode 系列函数，把 data-v-inspector 从渲染 props
 // 转移到 vnode.props 上的不可枚举属性 __v_inspector
-function interopVnode(code: string): string | undefined {
+// 同 injectLineData：头部 prepend 会让行号整体偏移，必须返回 sourcemap
+function interopVnode(code: string) {
   if (code.includes("_interopJsxInspectorVNode")) return;
   if (!code.includes(KEY_DATA)) return;
 
   const fn = new Set<string>();
-  const stripped = code.replace(
+  const s = new MagicString(code);
+  for (const match of code.matchAll(
     /(createElementVNode|createVNode|createElementBlock) as _\1,?/g,
-    (_, name: string) => {
-      fn.add(name);
-      return "";
-    },
-  );
+  )) {
+    fn.add(match[1]!);
+    s.remove(match.index, match.index + match[0].length);
+  }
   if (!fn.size) return;
 
   const names = Array.from(fn);
-  const header = `/* Injection by vite-plugin-vue-jsx-inspector Start */
+  s.prepend(`/* Injection by vite-plugin-vue-jsx-inspector Start */
 import { ${names.map((i) => `${i} as __jsxInspector_${i}`).join(", ")} } from 'vue'
 function _interopJsxInspectorVNode(vnode) {
   if (vnode && vnode.props && '${KEY_DATA}' in vnode.props) {
@@ -145,8 +146,11 @@ function _interopJsxInspectorVNode(vnode) {
 }
 ${names.map((i) => `function _${i}(...args) { return _interopJsxInspectorVNode(__jsxInspector_${i}(...args)) }`).join("\n")}
 /* Injection by vite-plugin-vue-jsx-inspector End */
-`;
-  return header + stripped;
+`);
+  return {
+    code: s.toString(),
+    map: s.generateMap({ hires: "boundary" }),
+  };
 }
 
 const toggleComboKeysMap: Record<string, string> = {
